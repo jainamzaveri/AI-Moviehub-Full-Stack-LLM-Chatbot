@@ -1,0 +1,559 @@
+import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState, useContext } from "react";
+import { MovieContext } from "../context/MovieContext";
+import { motion } from "framer-motion";
+import {
+  FaStar,
+  FaClock,
+  FaGlobe,
+  FaHeart,
+  FaRegHeart,
+  FaArrowLeft,
+  FaPlayCircle,
+} from "react-icons/fa";
+import { BsBookmarkPlus, BsBookmarkFill } from "react-icons/bs";
+import { MdCalendarMonth } from "react-icons/md";
+import { getLanguageName, formatRuntime } from "../utils/Funtions";
+
+import MovieReviews from "../Components/MovieReviews";
+import MovieMoreInfo from "../Components/MovieMoreInfo";
+import MovieCast from "../Components/MovieCast";
+import MovieOTTs from "../Components/MovieOTTs";
+import Wiki from "../Components/Wiki";
+import { toast } from "react-toastify";
+import MovieChat from "../Components/MovieChat";
+
+export default function MovieDetails() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const {
+    addToWatchlist,
+    addToFavourites,
+    removeFromWatchlist,
+    removeFromFavourites,
+    watchlist,
+    favourites,
+  } = useContext(MovieContext);
+
+  const [movie, setMovie] = useState(null);
+  const [cast, setCast] = useState([]);
+  const [crew, setCrew] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [trailer, setTrailer] = useState(null);
+  const [wiki, setWiki] = useState(null);
+  const [similar, setSimilar] = useState([]); // ⭐ NEW: similar movies
+
+  // 🔹 Loading states
+  const [isProcessingWatchlist, setIsProcessingWatchlist] = useState(false);
+  const [isProcessingFavourite, setIsProcessingFavourite] = useState(false);
+  const [actionWatchlist, setActionWatchlist] = useState(""); // "adding" | "removing"
+  const [actionFavourite, setActionFavourite] = useState(""); // "adding" | "removing"
+
+  const API_KEY = import.meta.env.VITE_TMDB_API;
+
+  const isInWatchlist = watchlist.some((m) => m.id === Number(id));
+  const isInFavourites = favourites.some((m) => m.id === Number(id));
+  const checkUser = localStorage.getItem("userIn");
+
+  // 🔹 Handle Watchlist (Add / Remove)
+  const handleWatchlist = async () => {
+    if (!checkUser) {
+      toast.error("Please login to add to watchlist");
+      return;
+    }
+    try {
+      setIsProcessingWatchlist(true);
+      setActionWatchlist(isInWatchlist ? "removing" : "adding");
+
+      if (isInWatchlist) {
+        await removeFromWatchlist(movie.id);
+      } else {
+        await addToWatchlist(movie);
+      }
+
+      // ⏳ Wait a short moment to visually show "Removing..."
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    } catch (err) {
+      console.error("Error updating watchlist:", err);
+    } finally {
+      setIsProcessingWatchlist(false);
+      setActionWatchlist("");
+    }
+  };
+
+  // 🔹 Handle Favourites (Add / Remove)
+  const handleFavourites = async () => {
+    if (!checkUser) {
+      toast.error("Please login to add to favourites");
+      return;
+    }
+    try {
+      setIsProcessingFavourite(true);
+      setActionFavourite(isInFavourites ? "removing" : "adding");
+
+      if (isInFavourites) {
+        await removeFromFavourites(movie.id);
+      } else {
+        await addToFavourites(movie);
+      }
+
+      // ⏳ Small delay for smooth UI feedback
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    } catch (err) {
+      console.error("Error updating favourites:", err);
+    } finally {
+      setIsProcessingFavourite(false);
+      setActionFavourite("");
+    }
+  };
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+
+    const fetchData = async () => {
+      try {
+        const movieRes = await fetch(
+          `https://api.themoviedb.org/3/movie/${id}?api_key=${API_KEY}&language=en-US&append_to_response=videos`
+        );
+        const movieData = await movieRes.json();
+        setMovie(movieData);
+
+        const officialTrailer = movieData.videos?.results?.find(
+          (v) => v.type === "Trailer" && v.site === "YouTube"
+        );
+        if (officialTrailer)
+          setTrailer(`https://www.youtube.com/watch?v=${officialTrailer.key}`);
+        else
+          setTrailer(
+            `https://www.youtube.com/results?search_query=${encodeURIComponent(
+              movieData.title + " official trailer"
+            )}`
+          );
+
+        const creditsRes = await fetch(
+          `https://api.themoviedb.org/3/movie/${id}/credits?api_key=${API_KEY}&language=en-US`
+        );
+        const creditsData = await creditsRes.json();
+        setCast(creditsData.cast.slice(0, 15));
+        setCrew(creditsData.crew);
+
+        const providerRes = await fetch(
+          `https://api.themoviedb.org/3/movie/${id}/watch/providers?api_key=${API_KEY}`
+        );
+        const providerData = await providerRes.json();
+        const indiaProviders = providerData.results?.IN?.flatrate || [];
+        setProviders(indiaProviders);
+
+        // ⭐ NEW: fetch similar movies
+        const similarRes = await fetch(
+          `https://api.themoviedb.org/3/movie/${id}/similar?api_key=${API_KEY}&language=en-US&page=1`
+        );
+        const similarData = await similarRes.json();
+        setSimilar(similarData.results || []);
+
+        const wikiRes = await fetch(
+          `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+            movieData.title
+          )}`
+        );
+        if (wikiRes.ok) {
+          const wikiData = await wikiRes.json();
+          if (wikiData.extract) {
+            setWiki({
+              summary: wikiData.extract,
+              url: wikiData.content_urls?.desktop?.page,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching movie details:", error);
+      }
+    };
+
+    fetchData();
+  }, [id, API_KEY]);
+
+  if (!movie)
+    return (
+      <p className="text-center mt-20 text-gray-400 text-lg">Loading...</p>
+    );
+
+  const director = crew.find((p) => p.job === "Director");
+  const producers = crew.filter((p) => p.job === "Producer");
+  const musicDirector = crew.find((p) => p.job === "Original Music Composer");
+  const productionCompanies = movie.production_companies
+    ?.map((c) => c.name)
+    .join(", ");
+
+  const posterUrl = movie.poster_path
+    ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+    : null;
+
+  const backdropUrl = movie.backdrop_path
+    ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
+    : null;
+
+  // Determine whether the info-area buttons should be hidden on md+.
+  const infoButtonsClass = backdropUrl
+    ? "flex flex-wrap items-center gap-4 mt-6 md:hidden"
+    : "flex flex-wrap items-center gap-4 mt-6";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.6 }}
+      className="relative min-h-screen bg-[#0a0a0a] text-white overflow-hidden"
+    >
+      {/* Subtle blurred page background */}
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-25 blur-lg"
+        style={{
+          backgroundImage: backdropUrl
+            ? `url(${backdropUrl})`
+            : posterUrl
+            ? `url(${posterUrl})`
+            : undefined,
+        }}
+        aria-hidden="true"
+      ></div>
+      <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/80 to-black/80"></div>
+
+      {/* Back Button */}
+      <button
+        onClick={() => navigate(-1)}
+        className="fixed top-20  left-5 z-20 bg-gray-800/70 hover:bg-gray-700 text-white p-3 rounded-full transition cursor-pointer"
+      >
+        <FaArrowLeft className="sm:text-lg text-sm" />
+      </button>
+
+      {/* Content */}
+      <div className="relative z-10 max-w-6xl mx-auto px-5 py-10 flex flex-col gap-12">
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-10">
+          {/* Poster */}
+          <div className="flex justify-center md:justify-start w-full sm:w-4/5 md:w-2/5 lg:w-1/3 px-4">
+            <div className="w-[70%] sm:w-[60%] md:w-full max-w-[350px] aspect-[2/3]">
+              {posterUrl ? (
+                <img
+                  src={posterUrl}
+                  alt={movie.title}
+                  className="w-full h-full rounded-2xl shadow-2xl border border-gray-800 object-cover"
+                />
+              ) : (
+                <div className="w-full h-full rounded-2xl shadow-2xl border border-gray-800 bg-black flex items-center justify-center p-6">
+                  <div>
+                    <h2 className="text-center text-xl sm:text-2xl md:text-3xl font-bold text-white leading-tight">
+                      {movie.title}
+                    </h2>
+                    {movie.release_date && (
+                      <p className="text-center text-sm text-gray-400 mt-2">
+                        {movie.release_date.slice(0, 4)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 space-y-5 text-center lg:text-left">
+            <h1 className="text-3xl sm:text-4xl font-bold text-red-500">
+              {movie.title}
+            </h1>
+
+            {movie.tagline && (
+              <p className="text-gray-400 italic text-base sm:text-lg">
+                “{movie.tagline}”
+              </p>
+            )}
+
+            {/* Details */}
+            <div className="flex flex-wrap justify-center lg:justify-start gap-x-8 gap-y-3 text-gray-300 text-sm sm:text-base">
+              <p className="flex items-center gap-2">
+                <FaStar className="text-yellow-400" />{" "}
+                {movie.vote_average?.toFixed(1)} / 10
+              </p>
+              <p className="flex items-center gap-2">
+                <MdCalendarMonth className="text-blue-400" />{" "}
+                {movie.release_date}
+              </p>
+              <p className="flex items-center gap-2">
+                <FaClock className="text-green-400" />{" "}
+                {formatRuntime(movie.runtime)}
+              </p>
+              <p className="flex items-center gap-2">
+                <FaGlobe className="text-purple-400" />{" "}
+                {getLanguageName(movie.original_language)}
+              </p>
+            </div>
+
+            <p className="text-gray-300 leading-relaxed text-sm sm:text-base max-w-3xl mx-auto lg:mx-0">
+              {movie.overview}
+            </p>
+
+            {wiki && <Wiki wiki={wiki} />}
+
+            {/* Buttons in Info area (visible on small screens, or always if no backdrop) */}
+            <div className={infoButtonsClass}>
+              {/* Trailer */}
+              <button
+                onClick={() => window.open(trailer, "_blank")}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white font-medium shadow-md hover:scale-105 transition"
+              >
+                <FaPlayCircle className="text-lg" />
+                <span className="text-sm">Watch Trailer</span>
+              </button>
+
+              {/* Watchlist */}
+              <button
+                onClick={handleWatchlist}
+                disabled={isProcessingWatchlist}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition cursor-pointer ${
+                  isInWatchlist
+                    ? "bg-gradient-to-r from-blue-700/60 to-blue-500 text-white"
+                    : "bg-[#1b1b1b] text-blue-400 border border-blue-700/40 hover:bg-blue-900/20"
+                } ${
+                  isProcessingWatchlist ? "opacity-60 cursor-not-allowed" : ""
+                }`}
+              >
+                {isProcessingWatchlist ? (
+                  <span className="text-xs capitalize">
+                    {actionWatchlist === "removing"
+                      ? "Removing..."
+                      : "Adding..."}
+                  </span>
+                ) : isInWatchlist ? (
+                  <>
+                    <BsBookmarkFill className="text-lg" />
+                    <span className="text-xs">In Watchlist</span>
+                  </>
+                ) : (
+                  <>
+                    <BsBookmarkPlus className="text-lg" />
+                    <span className="text-xs">Add to Watchlist</span>
+                  </>
+                )}
+              </button>
+
+              {/* Favourite */}
+              <button
+                onClick={handleFavourites}
+                disabled={isProcessingFavourite}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition cursor-pointer ${
+                  isInFavourites
+                    ? "bg-gradient-to-r from-pink-700/60 to-red-600 text-white"
+                    : "bg-[#1b1b1b] text-red-400 border border-red-700/40 hover:bg-red-900/20"
+                } ${
+                  isProcessingFavourite ? "opacity-60 cursor-not-allowed" : ""
+                }`}
+              >
+                {isProcessingFavourite ? (
+                  <span className="text-xs capitalize">
+                    {actionFavourite === "removing"
+                      ? "Removing..."
+                      : "Adding..."}
+                  </span>
+                ) : isInFavourites ? (
+                  <>
+                    <FaHeart className="text-lg" />
+                    <span className="text-xs">In Favourites</span>
+                  </>
+                ) : (
+                  <>
+                    <FaRegHeart className="text-lg" />
+                    <span className="text-xs">Add to Favourite</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Otts */}
+            <MovieOTTs providers={providers} movie={movie} />
+          </div>
+        </div>
+
+        {/* --- Backdrop Showcase --- */}
+        {backdropUrl && (
+          <section
+            aria-label="Backdrop showcase"
+            className="mx-2 md:mx-0 relative"
+          >
+            <h3 className="text-2xl font-semibold mb-3 text-red-400">
+              Banner
+            </h3>
+            <div
+              className="relative rounded-2xl overflow-hidden border border-gray-800 shadow-lg"
+              style={{ minHeight: 160 }}
+            >
+              {/* Backdrop image */}
+              <img
+                src={backdropUrl}
+                alt={`${movie.title} backdrop`}
+                className="w-full h-40 sm:h-56 md:h-96 object-cover"
+                loading="lazy"
+              />
+
+              {/* Overlay gradient */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent"></div>
+
+              {/* Card content on top of backdrop */}
+              <div className="absolute bottom-4 left-4 right-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="max-w-xl">
+                  <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-white drop-shadow-md">
+                    {movie.title}
+                  </h3>
+                  {movie.tagline && (
+                    <p className="text-sm text-gray-300 mt-1 line-clamp-2">
+                      {movie.tagline}
+                    </p>
+                  )}
+                </div>
+
+                {/* Buttons over backdrop — show only on md+ */}
+                <div className="hidden md:flex absolute bottom -5 right-5 items-center gap-3 z-10">
+                  {/* Trailer */}
+                  <button
+                    onClick={() => window.open(trailer, "_blank")}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-red-600 to-red-500 text-white font-medium shadow-md hover:scale-105 transition"
+                  >
+                    <FaPlayCircle className="text-base" />
+                    <span className="text-xs md:text-sm">Trailer</span>
+                  </button>
+
+                  {/* Watchlist */}
+                  <button
+                    onClick={handleWatchlist}
+                    disabled={isProcessingWatchlist}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium transition cursor-pointer ${
+                      isInWatchlist
+                        ? "bg-gradient-to-r from-blue-700/60 to-blue-500 text-white"
+                        : "bg-[#1b1b1b] text-blue-400 border border-blue-700/40 hover:bg-blue-900/20"
+                    } ${
+                      isProcessingWatchlist
+                        ? "opacity-60 cursor-not-allowed"
+                        : ""
+                    }`}
+                    title={
+                      isInWatchlist
+                        ? "Remove from Watchlist"
+                        : "Add to Watchlist"
+                    }
+                  >
+                    {isProcessingWatchlist ? (
+                      <span className="text-xs">...</span>
+                    ) : isInWatchlist ? (
+                      <BsBookmarkFill className="text-base" />
+                    ) : (
+                      <BsBookmarkPlus className="text-base" />
+                    )}
+                  </button>
+
+                  {/* Favourite */}
+                  <button
+                    onClick={handleFavourites}
+                    disabled={isProcessingFavourite}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md font-medium transition cursor-pointer ${
+                      isInFavourites
+                        ? "bg-gradient-to-r from-pink-700/60 to-red-600 text-white"
+                        : "bg-[#1b1b1b] text-red-400 border border-red-700/40 hover:bg-red-900/20"
+                    } ${
+                      isProcessingFavourite
+                        ? "opacity-60 cursor-not-allowed"
+                        : ""
+                    }`}
+                    title={
+                      isInFavourites
+                        ? "Remove from Favourites"
+                        : "Add to Favourites"
+                    }
+                  >
+                    {isProcessingFavourite ? (
+                      <span className="text-xs">...</span>
+                    ) : isInFavourites ? (
+                      <FaHeart className="text-base" />
+                    ) : (
+                      <FaRegHeart className="text-base" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ⭐ NEW: Similar Movies section */}
+        {similar.length > 0 && (
+          <section className="space-y-4">
+            <h2 className="text-2xl font-semibold text-red-400">
+              Similar Movies
+            </h2>
+            <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {similar.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => navigate(`/movie/${m.id}`)}
+                  className="bg-[#111] rounded-xl overflow-hidden border border-gray-800 hover:border-red-500 hover:-translate-y-1 transition-transform shadow-lg text-left"
+                >
+                  {m.poster_path && (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w300${m.poster_path}`}
+                      alt={m.title}
+                      className="w-full h-44 object-cover"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="p-2">
+                    <p className="font-medium text-sm line-clamp-1">
+                      {m.title}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                      <FaStar className="text-yellow-400" />
+                      <span>{m.vote_average?.toFixed(1) || "N/A"}</span>
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <MovieCast cast={cast} />
+
+        <MovieMoreInfo
+          movie={movie}
+          director={director}
+          producers={producers}
+          musicDirector={musicDirector}
+          productionCompanies={productionCompanies}
+        />
+
+        <MovieReviews movie={movie} />
+
+        {/* 🔹 LLM Movie Chatbot */}
+        <MovieChat
+          movieContext={{
+            id: movie.id,
+            title: movie.title,
+            overview: movie.overview,
+            tagline: movie.tagline,
+            release_date: movie.release_date,
+            runtime: movie.runtime,
+            original_language: movie.original_language,
+            genres: movie.genres,
+            vote_average: movie.vote_average,
+            vote_count: movie.vote_count,
+            director: director?.name,
+            producers: producers?.map((p) => p.name),
+            cast: cast.slice(0, 10).map((c) => ({
+              name: c.name,
+              character: c.character,
+            })),
+            wikiSummary: wiki?.summary,
+          }}
+        />
+
+      </div>
+    </motion.div>
+  );
+}
