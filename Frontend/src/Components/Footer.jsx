@@ -1,0 +1,27 @@
+// Footer.jsx
+import { FaLinkedin, FaGithub, FaCode } from "react-icons/fa";
+import { Link } from "react-router-dom";
+
+export default function Footer() {
+  return (
+    <footer className="bg-[#0a0a0a] text-gray-400 border-t border-gray-800 py-5">
+      <div className="max-w-full mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm px-16">
+        <p className="text-center md:text-left">
+          © {new Date().getFullYear()} <span className="text-red-500 font-semibold">The Movie Hub</span> | Made by <span className="text-gray-300 font-medium">Group 10 boys</span>
+        </p>
+
+        <div className="flex gap-6 justify-center">
+          <a href="https://github.com/JAIS0N/netflix-clone-mern.git" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-all duration-200">
+            <FaGithub size={22} />
+          </a>
+        </div>
+
+        <div className="flex gap-4 text-xs justify-center">
+          <Link to="/terms" className="hover:text-red-400 transition-colors duration-200">Terms & Conditions</Link>
+          <span className="text-gray-600">|</span>
+          <Link to="/privacy" className="hover:text-blue-400 transition-colors duration-200">Privacy Policy</Link>
+        </div>
+      </div>
+    </footer>
+  );
+}
